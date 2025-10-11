@@ -155,42 +155,9 @@
 				localStorage.setItem('userUUID', userUUID);
 			}
 
-			// Handle file selection
-			async function handleFileSelect(event) {
-				const file = event.target.files[0];
-				if (!file) return;
-
-				try {
-					const arrayBuffer = await file.arrayBuffer();
-					const decrypted = await decryptMessage(arrayBuffer);
-					alert('Decrypted message: ' + decrypted);
-				} catch (error) {
-					console.error('Error:', error);
-					alert('Error decrypting file. Make sure you are using the correct UUID.');
-				}
-			}
-
-			// Handle form submission
-			async function handleSubmit(event) {
-				event.preventDefault();
-				const message = document.getElementById('message').value;
-
-				try {
-					// Encrypt the message to raw binary format
-					const encrypted = await encryptMessage(message);
-                    console.log(new Uint8Array(encrypted));
-					const decrypted = await decryptMessage(encrypted);
-					alert('Decrypted message: ' + decrypted);
-				} catch (error) {
-					console.error('Error:', error);
-					alert('Error processing message');
-				}
-			}
-
 			// Wait for DOM to load
 			window.addEventListener('DOMContentLoaded', () => {
 				document.getElementById('uuid').textContent = userUUID;
-				document.getElementById('messageForm').addEventListener('submit', handleSubmit);
 			});
 		</script>
 		<style>
