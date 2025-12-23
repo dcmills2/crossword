@@ -1,182 +1,199 @@
 <!doctype html>
 <html lang="en">
-	<head>
-		<meta charset="utf-8">
-		<title>Encrypted Website Loader</title>
-		<style>
-			body, html { margin: 0; padding: 0; height: 100%; }
-			iframe { border: 0; }
-		</style>
-		<script>
-			// Function to generate UUID v4
-			function generateUUID() {
-				return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-					(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-				);
-			}
 
-			// Function to convert string to ArrayBuffer
-			function str2ab(str) {
-				const encoder = new TextEncoder();
-				return encoder.encode(str);
-			}
+<head>
+  <meta charset="utf-8">
+  <title>Encrypted Website Loader</title>
+  <style>
+    body,
+    html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
 
-			// Function to convert ArrayBuffer to string
-			function ab2str(buf) {
-				const decoder = new TextDecoder();
-				return decoder.decode(buf);
-			}
+    iframe {
+      border: 0;
+    }
+  </style>
+  <script>
+    // Function to generate UUID v4
+    function generateUUID() {
+      return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+        (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+      );
+    }
 
-			// Function to derive encryption key from UUID
-			async function getKey(uuid) {
-				const keyMaterial = await crypto.subtle.importKey(
-					"raw",
-					str2ab(uuid),
-					{ name: "PBKDF2" },
-					false,
-					["deriveBits", "deriveKey"]
-				);
+    // Function to convert string to ArrayBuffer
+    function str2ab(str) {
+      const encoder = new TextEncoder();
+      return encoder.encode(str);
+    }
 
-				return crypto.subtle.deriveKey(
-					{
-						name: "PBKDF2",
-						salt: str2ab("salt"),
-						iterations: 100000,
-						hash: "SHA-256"
-					},
-					keyMaterial,
-					{ name: "AES-GCM", length: 256 },
-					true,
-					["encrypt", "decrypt"]
-				);
-			}
+    // Function to convert ArrayBuffer to string
+    function ab2str(buf) {
+      const decoder = new TextDecoder();
+      return decoder.decode(buf);
+    }
 
-			// Function to encrypt text to raw binary format
-			async function encryptMessage(text) {
-				const key = await getKey(userUUID);
-				const iv = crypto.getRandomValues(new Uint8Array(12));
-				const encoded = str2ab(text);
+    // Function to derive encryption key from UUID
+    async function getKey(uuid) {
+      const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        str2ab(uuid),
+        { name: "PBKDF2" },
+        false,
+        ["deriveBits", "deriveKey"]
+      );
 
-				const ciphertext = await crypto.subtle.encrypt(
-					{ name: "AES-GCM", iv: iv },
-					key,
-					encoded
-				);
+      return crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: str2ab("salt"),
+          iterations: 100000,
+          hash: "SHA-256"
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+      );
+    }
 
-				// Combine IV and ciphertext into a single ArrayBuffer
-				const combined = new Uint8Array(iv.length + ciphertext.byteLength);
-				combined.set(iv, 0);
-				combined.set(new Uint8Array(ciphertext), iv.length);
+    // Function to encrypt text to raw binary format
+    async function encryptMessage(text) {
+      const key = await getKey(userUUID);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encoded = str2ab(text);
 
-				return combined.buffer;
-			}
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        encoded
+      );
 
-			// Function to decrypt binary data
-			async function decryptMessage(encryptedData) {
-				const key = await getKey(userUUID);
+      // Combine IV and ciphertext into a single ArrayBuffer
+      const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+      combined.set(iv, 0);
+      combined.set(new Uint8Array(ciphertext), iv.length);
 
-				// First 12 bytes are IV, rest is ciphertext
-				const iv = new Uint8Array(encryptedData.slice(0, 12));
-				const data = new Uint8Array(encryptedData.slice(12));
+      return combined.buffer;
+    }
 
-				const decrypted = await crypto.subtle.decrypt(
-					{ name: "AES-GCM", iv: iv },
-					key,
-					data
-				);
-				return ab2str(decrypted);
-			}
+    // Function to decrypt binary data
+    async function decryptMessage(encryptedData) {
+      const key = await getKey(userUUID);
 
-			// Function to fetch and decrypt a file
-			async function fetchAndDecrypt(filename) {
-				const response = await fetch('encrypted_html/' + filename);
-				const arrayBuffer = await response.arrayBuffer();
-				return await decryptMessage(arrayBuffer);
-			}
+      // First 12 bytes are IV, rest is ciphertext
+      const iv = new Uint8Array(encryptedData.slice(0, 12));
+      const data = new Uint8Array(encryptedData.slice(12));
 
-			// Function to create a blob URL for decrypted content
-			function createBlobUrl(content, type) {
-				const blob = new Blob([content], { type });
-				return URL.createObjectURL(blob);
-			}
+      const decrypted = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: iv },
+        key,
+        data
+      );
+      return ab2str(decrypted);
+    }
 
-			// Function to load the decrypted website
-			async function loadDecryptedWebsite() {
-				try {
-					// Decrypt all necessary files
-					const htmlContent = await fetchAndDecrypt('index.html.encrypted');
-					const mobileHtmlContent = await fetchAndDecrypt('mobile.html.encrypted');
-					const cssContent = await fetchAndDecrypt('style.css.encrypted');
-					const jsContent = await fetchAndDecrypt('script.js.encrypted');
-					const miniContent = await fetchAndDecrypt('mini.json.encrypted');
+    // Function to fetch and decrypt a file
+    async function fetchAndDecrypt(filename) {
+      const response = await fetch('encrypted_html/' + filename);
+      const arrayBuffer = await response.arrayBuffer();
+      return await decryptMessage(arrayBuffer);
+    }
 
-					// Create blob URLs for all files
-					const cssUrl = createBlobUrl(cssContent, 'text/css');
-					const miniUrl = createBlobUrl(miniContent, 'application/json');
+    // Function to create a blob URL for decrypted content
+    function createBlobUrl(content, type) {
+      const blob = new Blob([content], { type });
+      return URL.createObjectURL(blob);
+    }
 
-					const jsContentModified = jsContent.replaceAll('mini.json', miniUrl);
-					const jsUrl = createBlobUrl(jsContentModified, 'text/javascript');
+    // Function to load the decrypted website
+    async function loadDecryptedWebsite() {
+      try {
+        // Decrypt all necessary files
+        const htmlContent = await fetchAndDecrypt('index.html.encrypted');
+        const mobileHtmlContent = await fetchAndDecrypt('mobile.html.encrypted');
+        const cssContent = await fetchAndDecrypt('style.css.encrypted');
+        const jsContent = await fetchAndDecrypt('script.js.encrypted');
+        const miniContent = await fetchAndDecrypt('mini.json.encrypted');
 
-					const mobileContentModified = mobileHtmlContent
-						.replaceAll('style.css', cssUrl)
-						.replaceAll('script.js', jsUrl);
-					const mobileHtmlUrl = createBlobUrl(mobileContentModified, 'text/html');
+        // Create blob URLs for all files
+        const cssUrl = createBlobUrl(cssContent, 'text/css');
+        const miniUrl = createBlobUrl(miniContent, 'application/json');
 
-					// Modify HTML to use blob URLs for resources
-					const modifiedHtml = htmlContent
-						.replaceAll('mobile.html', mobileHtmlUrl)
-						.replaceAll('style.css', cssUrl)
-						.replaceAll('script.js', jsUrl)
-						.replaceAll('mini.json', miniUrl);
+        const jsContentModified = jsContent.replaceAll('mini.json', miniUrl);
+        const jsUrl = createBlobUrl(jsContentModified, 'text/javascript');
 
-					// Create blob URL for the HTML
-					const htmlUrl = createBlobUrl(modifiedHtml, 'text/html');
+        const mobileContentModified = mobileHtmlContent
+          .replaceAll('style.css', cssUrl)
+          .replaceAll('script.js', jsUrl);
+        const mobileHtmlUrl = createBlobUrl(mobileContentModified, 'text/html');
 
-					// Create an iframe to host the decrypted content
-					const iframe = document.createElement('iframe');
-					iframe.style.width = '100%';
-					iframe.style.height = '100vh';
-					iframe.style.border = 'none';
-					// Load the decrypted website in the iframe
-					iframe.src = htmlUrl;
-					document.body.innerHTML = '';
-					document.body.appendChild(iframe);
+        // Modify HTML to use blob URLs for resources
+        const modifiedHtml = htmlContent
+          .replaceAll('mobile.html', mobileHtmlUrl)
+          .replaceAll('style.css', cssUrl)
+          .replaceAll('script.js', jsUrl)
+          .replaceAll('mini.json', miniUrl);
 
-				} catch (error) {
-					console.error('Error loading decrypted website:', error);
-					alert('Error loading decrypted website. Make sure your UUID is correct.');
-				}
-			}
+        // Create blob URL for the HTML
+        const htmlUrl = createBlobUrl(modifiedHtml, 'text/html');
 
-			// Check for existing UUID or generate new one
-			let userUUID = localStorage.getItem('userUUID');
-			if (!userUUID) {
-				userUUID = generateUUID();
-				localStorage.setItem('userUUID', userUUID);
-			}
+        // Create an iframe to host the decrypted content
+        const iframe = document.createElement('iframe');
+        iframe.style.width = '100%';
+        iframe.style.height = '100vh';
+        iframe.style.border = 'none';
+        // Load the decrypted website in the iframe
+        iframe.src = htmlUrl;
+        document.body.innerHTML = '';
+        document.body.appendChild(iframe);
 
-			// Wait for DOM to load
-			window.addEventListener('DOMContentLoaded', () => {
-				document.getElementById('uuid').textContent = userUUID;
-			});
-		</script>
-		<style>
-			form { margin: 20px 0; }
-			input[type="text"] { width: 300px; padding: 5px; }
-		</style>
-	</head>
-	<body>
-		<div id="loader" style="text-align: center; padding: 50px;">
-			<h2>Loading encrypted website...</h2>
-			<p>UUID: <span id="uuid"></span></p>
-		</div>
-		<script>
-			// Add event listeners once DOM is loaded
-			document.addEventListener('DOMContentLoaded', () => {
-				document.getElementById('uuid').textContent = userUUID;
-				// Start loading the decrypted website
-				loadDecryptedWebsite();
-			});
-		</script>
-	</body>
+      } catch (error) {
+        console.error('Error loading decrypted website:', error);
+        alert('Error loading decrypted website. Make sure your UUID is correct.');
+      }
+    }
+
+    // Check for existing UUID or generate new one
+    let userUUID = localStorage.getItem('userUUID');
+    if (!userUUID) {
+      userUUID = generateUUID();
+      localStorage.setItem('userUUID', userUUID);
+    }
+
+    // Wait for DOM to load
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('uuid').textContent = userUUID;
+    });
+  </script>
+  <style>
+    form {
+      margin: 20px 0;
+    }
+
+    input[type="text"] {
+      width: 300px;
+      padding: 5px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="loader" style="text-align: center; padding: 50px;">
+    <h2>Loading encrypted website...</h2>
+    <p>UUID: <span id="uuid"></span></p>
+  </div>
+  <script>
+    // Add event listeners once DOM is loaded
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('uuid').textContent = userUUID;
+      // Start loading the decrypted website
+      loadDecryptedWebsite();
+    });
+  </script>
+</body>
+
 </html>
