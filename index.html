@@ -3,6 +3,7 @@
 
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Encrypted Website Loader</title>
   <style>
     body,
@@ -81,7 +82,8 @@
     }
 
     // Function to decrypt binary data
-    async function decryptMessage(encryptedData) {
+    // If `asArrayBuffer` is true, return the raw ArrayBuffer of decrypted bytes
+    async function decryptMessage(encryptedData, asArrayBuffer = false) {
       const key = await getKey(userUUID);
 
       // First 12 bytes are IV, rest is ciphertext
@@ -93,14 +95,28 @@
         key,
         data
       );
+      if (asArrayBuffer) return decrypted;
       return ab2str(decrypted);
     }
 
+    // Convert decrypted font ArrayBuffer to base64 data URL to avoid blob font restrictions in some browsers
+    function arrayBufferToBase64(buffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const chunkSize = 0x8000; // arbitrary chunk size
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary);
+    }
+
     // Function to fetch and decrypt a file
-    async function fetchAndDecrypt(filename) {
+    // Fetch and decrypt. If `asArrayBuffer` is true, the decrypted result is returned as an ArrayBuffer.
+    async function fetchAndDecrypt(filename, asArrayBuffer = false) {
       const response = await fetch('encrypted_html/' + filename);
       const arrayBuffer = await response.arrayBuffer();
-      return await decryptMessage(arrayBuffer);
+      return await decryptMessage(arrayBuffer, asArrayBuffer);
     }
 
     // Function to create a blob URL for decrypted content
@@ -114,29 +130,45 @@
       try {
         // Decrypt all necessary files
         const htmlContent = await fetchAndDecrypt('index.html.encrypted');
-        const mobileHtmlContent = await fetchAndDecrypt('mobile.html.encrypted');
         const cssContent = await fetchAndDecrypt('style.css.encrypted');
         const jsContent = await fetchAndDecrypt('script.js.encrypted');
         const miniContent = await fetchAndDecrypt('mini.json.encrypted');
-
-        // Create blob URLs for all files
-        const cssUrl = createBlobUrl(cssContent, 'text/css');
+        const arrowLeftContent = await fetchAndDecrypt('assets/arrow-left.svg.encrypted');
+        const arrowRightContent = await fetchAndDecrypt('assets/arrow-right.svg.encrypted');
+        const logoContent = await fetchAndDecrypt('assets/logo.svg.encrypted');
+        const pencilContent = await fetchAndDecrypt('assets/pencil-blue.svg.encrypted');
+        const settingsContent = await fetchAndDecrypt('assets/settings-gear.svg.encrypted');
+        // For fonts we request raw ArrayBuffer so we can embed as data: URI (avoids Firefox blob font sanitizer)
+        const fontContent = await fetchAndDecrypt('fonts/font.woff2.encrypted', true);
+        // Create blob URLs for other files
         const miniUrl = createBlobUrl(miniContent, 'application/json');
+        const arrowLeftUrl = createBlobUrl(arrowLeftContent, 'image/svg+xml');
+        const arrowRightUrl = createBlobUrl(arrowRightContent, 'image/svg+xml');
+        const logoUrl = createBlobUrl(logoContent, 'image/svg+xml');
+        const pencilUrl = createBlobUrl(pencilContent, 'image/svg+xml');
+        const settingsUrl = createBlobUrl(settingsContent, 'image/svg+xml');
 
+        const fontBase64 = arrayBufferToBase64(fontContent);
+        const fontDataUrl = 'data:font/woff2;base64,' + fontBase64;
+
+        // Special case: CSS needs the font replaced (use data: URI)
+        const cssContentModified = cssContent.replaceAll('fonts/font.woff2', fontDataUrl);
+        const cssUrl = createBlobUrl(cssContentModified, 'text/css');
+
+        // Special case: JS needs the mini.json replaced
         const jsContentModified = jsContent.replaceAll('mini.json', miniUrl);
         const jsUrl = createBlobUrl(jsContentModified, 'text/javascript');
 
-        const mobileContentModified = mobileHtmlContent
-          .replaceAll('style.css', cssUrl)
-          .replaceAll('script.js', jsUrl);
-        const mobileHtmlUrl = createBlobUrl(mobileContentModified, 'text/html');
-
         // Modify HTML to use blob URLs for resources
         const modifiedHtml = htmlContent
-          .replaceAll('mobile.html', mobileHtmlUrl)
           .replaceAll('style.css', cssUrl)
           .replaceAll('script.js', jsUrl)
-          .replaceAll('mini.json', miniUrl);
+          .replaceAll('mini.json', miniUrl)
+          .replaceAll('assets/arrow-left.svg', arrowLeftUrl)
+          .replaceAll('assets/arrow-right.svg', arrowRightUrl)
+          .replaceAll('assets/logo.svg', logoUrl)
+          .replaceAll('assets/pencil-blue.svg', pencilUrl)
+          .replaceAll('assets/settings-gear.svg', settingsUrl);
 
         // Create blob URL for the HTML
         const htmlUrl = createBlobUrl(modifiedHtml, 'text/html');
