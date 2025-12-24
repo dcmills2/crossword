@@ -61,30 +61,12 @@
       );
     }
 
-    // Function to encrypt text to raw binary format
-    async function encryptMessage(text) {
-      const key = await getKey(userUUID);
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encoded = str2ab(text);
-
-      const ciphertext = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: iv },
-        key,
-        encoded
-      );
-
-      // Combine IV and ciphertext into a single ArrayBuffer
-      const combined = new Uint8Array(iv.length + ciphertext.byteLength);
-      combined.set(iv, 0);
-      combined.set(new Uint8Array(ciphertext), iv.length);
-
-      return combined.buffer;
-    }
-
     // Function to decrypt binary data
     // If `asArrayBuffer` is true, return the raw ArrayBuffer of decrypted bytes
-    async function decryptMessage(encryptedData, asArrayBuffer = false) {
-      const key = await getKey(userUUID);
+    // Optionally provide a `cryptoKey` to use; otherwise derive from `userUUID`.
+    async function decryptMessage(encryptedData, asArrayBuffer = false, cryptoKey) {
+      if (!cryptoKey) throw new Error('decryptMessage requires a cryptoKey parameter');
+      const key = cryptoKey;
 
       // First 12 bytes are IV, rest is ciphertext
       const iv = new Uint8Array(encryptedData.slice(0, 12));
@@ -99,7 +81,17 @@
       return ab2str(decrypted);
     }
 
-    // Convert decrypted font ArrayBuffer to base64 data URL to avoid blob font restrictions in some browsers
+    // Function to fetch and decrypt a file
+    // Fetch and decrypt. If `asArrayBuffer` is true, the decrypted result is returned as an ArrayBuffer.
+    // Optional `cryptoKey` can be provided to use a specific key for decryption.
+    async function fetchAndDecrypt(filename, asArrayBuffer = false, cryptoKey) {
+      if (!cryptoKey) throw new Error('fetchAndDecrypt requires a cryptoKey parameter');
+      const response = await fetch('encrypted/' + filename);
+      const arrayBuffer = await response.arrayBuffer();
+      return await decryptMessage(arrayBuffer, asArrayBuffer, cryptoKey);
+    }
+
+    // Helper: Convert decrypted font ArrayBuffer to base64 data URL to avoid blob font restrictions in some browsers
     function arrayBufferToBase64(buffer) {
       let binary = '';
       const bytes = new Uint8Array(buffer);
@@ -111,12 +103,25 @@
       return btoa(binary);
     }
 
-    // Function to fetch and decrypt a file
-    // Fetch and decrypt. If `asArrayBuffer` is true, the decrypted result is returned as an ArrayBuffer.
-    async function fetchAndDecrypt(filename, asArrayBuffer = false) {
-      const response = await fetch('encrypted_html/' + filename);
-      const arrayBuffer = await response.arrayBuffer();
-      return await decryptMessage(arrayBuffer, asArrayBuffer);
+    // Helper: compute SHA-256 and return filesystem-safe base64url (no padding)
+    async function sha256Base64Url(str) {
+      const hash = await crypto.subtle.digest('SHA-256', str2ab(str));
+      const bytes = new Uint8Array(hash);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary);
+      return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    // Helper: compute SHA-256 over user key and return base64url
+    async function sha256Base64UrlBytes(userKey) {
+      const arrayBuffer = await crypto.subtle.exportKey('raw', userKey);
+      const hash = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const bytes = new Uint8Array(hash);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary);
+      return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
     // Function to create a blob URL for decrypted content
@@ -128,29 +133,46 @@
     // Function to load the decrypted website
     async function loadDecryptedWebsite() {
       try {
-        // Decrypt all necessary files
-        const htmlContent = await fetchAndDecrypt('index.html.encrypted');
-        const cssContent = await fetchAndDecrypt('style.css.encrypted');
-        const jsContent = await fetchAndDecrypt('script.js.encrypted');
-        const miniContent = await fetchAndDecrypt('mini.json.encrypted');
-        const arrowLeftContent = await fetchAndDecrypt('assets/arrow-left.svg.encrypted');
-        const arrowRightContent = await fetchAndDecrypt('assets/arrow-right.svg.encrypted');
-        const logoContent = await fetchAndDecrypt('assets/logo.svg.encrypted');
-        const pencilContent = await fetchAndDecrypt('assets/pencil-blue.svg.encrypted');
-        const settingsContent = await fetchAndDecrypt('assets/settings-gear.svg.encrypted');
+        // Obtain the user's decryption key (derived from UUID)
+        const userKey = await getKey(userUUID);
+        // Derive filename for per-user keyfile by hashing the raw derived key bytes
+        const userHash = await sha256Base64UrlBytes(userKey);
+        const keyFilename = `keys/${userHash}.encrypted`;
+
+        // Fetch and decrypt the per-user keyfile (this yields raw AES key bytes)
+        const keyFileArray = await fetchAndDecrypt(keyFilename, true, userKey);
+        // Import raw bytes as AES-GCM CryptoKey for content decryption
+        const contentKey = await crypto.subtle.importKey(
+          'raw',
+          keyFileArray,
+          { name: 'AES-GCM' },
+          true,
+          ['encrypt', 'decrypt']
+        );
+
+        // Decrypt all necessary site files with the derived content key
+        const htmlContent = await fetchAndDecrypt('html/index.html.encrypted', false, contentKey);
+        const cssContent = await fetchAndDecrypt('html/style.css.encrypted', false, contentKey);
+        const jsContent = await fetchAndDecrypt('html/script.js.encrypted', false, contentKey);
+        const miniArray = await fetchAndDecrypt('html/mini.json.encrypted', true, contentKey);
+        const arrowLeftArray = await fetchAndDecrypt('html/assets/arrow-left.svg.encrypted', true, contentKey);
+        const arrowRightArray = await fetchAndDecrypt('html/assets/arrow-right.svg.encrypted', true, contentKey);
+        const logoArray = await fetchAndDecrypt('html/assets/logo.svg.encrypted', true, contentKey);
+        const pencilArray = await fetchAndDecrypt('html/assets/pencil-blue.svg.encrypted', true, contentKey);
+        const settingsArray = await fetchAndDecrypt('html/assets/settings-gear.svg.encrypted', true, contentKey);
+        const fontArray = await fetchAndDecrypt('html/fonts/font.woff2.encrypted', true, contentKey);
+
+        // Create blob URLs for other files (decrypted with the derived content key)
+        const miniUrl = createBlobUrl(miniArray, 'application/json');
+        const arrowLeftUrl = createBlobUrl(arrowLeftArray, 'image/svg+xml');
+        const arrowRightUrl = createBlobUrl(arrowRightArray, 'image/svg+xml');
+        const logoUrl = createBlobUrl(logoArray, 'image/svg+xml');
+        const pencilUrl = createBlobUrl(pencilArray, 'image/svg+xml');
+        const settingsUrl = createBlobUrl(settingsArray, 'image/svg+xml');
+
         // For fonts we request raw ArrayBuffer so we can embed as data: URI (avoids Firefox blob font sanitizer)
-        const fontContent = await fetchAndDecrypt('fonts/font.woff2.encrypted', true);
-        // Create blob URLs for other files
-        const miniUrl = createBlobUrl(miniContent, 'application/json');
-        const arrowLeftUrl = createBlobUrl(arrowLeftContent, 'image/svg+xml');
-        const arrowRightUrl = createBlobUrl(arrowRightContent, 'image/svg+xml');
-        const logoUrl = createBlobUrl(logoContent, 'image/svg+xml');
-        const pencilUrl = createBlobUrl(pencilContent, 'image/svg+xml');
-        const settingsUrl = createBlobUrl(settingsContent, 'image/svg+xml');
-
-        const fontBase64 = arrayBufferToBase64(fontContent);
+        const fontBase64 = arrayBufferToBase64(fontArray);
         const fontDataUrl = 'data:font/woff2;base64,' + fontBase64;
-
         // Special case: CSS needs the font replaced (use data: URI)
         const cssContentModified = cssContent.replaceAll('fonts/font.woff2', fontDataUrl);
         const cssUrl = createBlobUrl(cssContentModified, 'text/css');
