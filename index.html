@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Encrypted Website Loader</title>
+  <title>Crossword Puzzle</title>
   <style>
     body,
     html {
@@ -130,8 +130,16 @@
       return URL.createObjectURL(blob);
     }
 
+    function openPuzzleChooser() {
+      // Open a small chooser window that lists available puzzles
+      const w = 420, h = Math.min(window.innerHeight - 60, 700);
+      const left = Math.max(0, Math.round((window.screen.width - w) / 2));
+      const top = Math.max(0, Math.round((window.screen.height - h) / 3));
+      window.open('puzzle-chooser.html', 'puzzleChooser', `width=${w},height=${h},left=${left},top=${top}`);
+    }
+
     // Function to load the decrypted website
-    async function loadDecryptedWebsite() {
+    async function loadDecryptedWebsite(miniFileName) {
       try {
         // Obtain the user's decryption key (derived from UUID)
         const userKey = await getKey(userUUID);
@@ -154,7 +162,7 @@
         const htmlContent = await fetchAndDecrypt('html/index.html.encrypted', false, contentKey);
         const cssContent = await fetchAndDecrypt('html/style.css.encrypted', false, contentKey);
         const jsContent = await fetchAndDecrypt('html/script.js.encrypted', false, contentKey);
-        const miniArray = await fetchAndDecrypt('html/mini.json.encrypted', true, contentKey);
+        const miniArray = await fetchAndDecrypt('html/' + miniFileName + '.encrypted', true, contentKey);
         const arrowLeftArray = await fetchAndDecrypt('html/assets/arrow-left.svg.encrypted', true, contentKey);
         const arrowRightArray = await fetchAndDecrypt('html/assets/arrow-right.svg.encrypted', true, contentKey);
         const logoArray = await fetchAndDecrypt('html/assets/logo.svg.encrypted', true, contentKey);
@@ -185,7 +193,6 @@
         const modifiedHtml = htmlContent
           .replaceAll('style.css', cssUrl)
           .replaceAll('script.js', jsUrl)
-          .replaceAll('mini.json', miniUrl)
           .replaceAll('assets/arrow-left.svg', arrowLeftUrl)
           .replaceAll('assets/arrow-right.svg', arrowRightUrl)
           .replaceAll('assets/logo.svg', logoUrl)
@@ -204,6 +211,10 @@
         iframe.src = htmlUrl;
         document.body.innerHTML = '';
         document.body.appendChild(iframe);
+        iframe.onload = () => {
+          const menuBtn = iframe.contentWindow.document.getElementById('menu-btn');
+          menuBtn.onclick = openPuzzleChooser;
+        };
 
       } catch (error) {
         console.error('Error loading decrypted website:', error);
@@ -244,7 +255,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('uuid').textContent = userUUID;
       // Start loading the decrypted website
-      loadDecryptedWebsite();
+      loadDecryptedWebsite("mini.json");
     });
   </script>
 </body>
