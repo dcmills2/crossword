@@ -3,14 +3,14 @@
 TODAY=$(date +%F)
 if [[ $# -ne 1 ]]; then
   filename="mini.json"
-  ./unencrypted/**/get-todays-mini.sh
+  bash ./unencrypted/**/get-todays-mini.sh
 else
   filename="puzzles/$1.json"
-  ./unencrypted/**/fetch-puzzle.sh $1
+  bash ./unencrypted/**/fetch-puzzle.sh $1
 fi
 filepath="`echo unencrypted/**/$filename`"
 echo $filepath
-./do_encrypt_file.py "unencrypted/key.bin" "$filepath"
+python ./do_encrypt_file.py "unencrypted/key.bin" "$filepath"
 mv "$filepath.encrypted" "encrypted/html/$filename.encrypted"
 if [[ $# -ne 1 ]]; then
   puzzlesDir="`echo unencrypted/**/puzzles`"
