@@ -23,96 +23,34 @@
   <div id="empty" class="empty" style="display:none">No puzzles found.</div>
 
   <script>
-    // Attempt to enumerate files from the server directory `/encrypted/html/puzzles/`.
-    // Works with servers that expose a directory index (HTML) or a JSON listing.
-    async function loadList() {
-      const container = document.getElementById('list');
-      container.innerHTML = 'Loading…';
-      try {
-        const dirUrl = '/encrypted/html/puzzles/';
-        const res = await fetch(dirUrl, { cache: 'no-store' });
-        if (!res.ok) throw new Error('Directory not accessible');
-        const ct = res.headers.get('content-type') || '';
-        let names = [];
+    // Generate descending date list from today back to 2025-08-27 (inclusive).
+    function pad(n){return n<10? '0'+n : n}
+    function fmt(d){return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())}
 
-        if (ct.includes('application/json')) {
-          // Server returned JSON array of filenames or objects
-          const json = await res.json();
-          if (Array.isArray(json)) {
-            names = json.map(item => typeof item === 'string' ? item : (item.filename || item.name)).filter(n => n !== 'mini.json.encrypted');
-          }
-        } else {
-          // Parse HTML directory index and extract anchor hrefs
-          const text = await res.text();
-          const doc = new DOMParser().parseFromString(text, 'text/html');
-          const anchors = Array.from(doc.querySelectorAll('a'));
-          names = anchors.map(a => {
-            try {
-              const filename = new URL(a.getAttribute('href'), res.url).pathname.split('/').pop();
-              return filename === 'mini.json.encrypted' ? null : filename;
-            } catch(e){
-              return a.getAttribute('href');
-            }
-          }).filter(Boolean);
-        }
-
-        // Normalize: remove trailing '.encrypted' if present, keep only .json files
-        const normalized = Array.from(new Set(names.map(n => {
-          if (!n) return null;
-          let s = n;
-          if (s.endsWith('.encrypted')) s = s.slice(0, -'.encrypted'.length);
-          return s;
-        }).filter(Boolean))).filter(n => n.toLowerCase().endsWith('.json'));
-
-        container.innerHTML = '';
-        if (normalized.length === 0) {
-          document.getElementById('empty').style.display = 'block';
-          return;
-        }
-
-        normalized.sort((a,b)=>{
-          // try to extract yyyy-mm-dd from names like mini_YYYY-MM-DD or mini-YYYY-MM-DD
-          const da = (a.match(/(\d{4}-\d{2}-\d{2})/) || [null])[0];
-          const db = (b.match(/(\d{4}-\d{2}-\d{2})/) || [null])[0];
-          if (da && db) return db.localeCompare(da);
-          if (da) return -1;
-          if (db) return 1;
-          return a.localeCompare(b);
-        });
-
-        normalized.forEach(name => {
-          const div = document.createElement('div');
-          div.className = 'item';
-          // display date if present
-          const dateMatch = (name.match(/(\d{4}-\d{2}-\d{2})/) || [null])[0];
-          const dateText = dateMatch || name;
-          div.innerHTML = `<div><div class="date">${dateText}</div><div class="choose">${name}</div></div><div>Choose</div>`;
-          div.onclick = () => choose(name);
-          container.appendChild(div);
-        });
-
-      } catch (err) {
-        document.getElementById('list').style.display = 'none';
-        const e = document.getElementById('empty');
-        e.textContent = 'Could not list puzzles from server.';
-        e.style.display = 'block';
-        console.error(err);
-      }
-    }
-
-    function choose(filename) {
-      try {
-        if (window.opener && window.opener.loadDecryptedWebsite) {
-          window.opener.loadDecryptedWebsite('puzzles/' + filename);
-        } else if (window.opener && window.opener.postMessage) {
-          window.opener.postMessage({ type: 'choose-puzzle', filename }, '*');
+    function choose(filename){
+      try{
+        if (window.opener && window.opener.loadDecryptedWebsite){
+          window.opener.loadDecryptedWebsite("puzzles/" + filename);
         } else {
           console.warn('No opener to receive chosen filename');
         }
-      } catch (e) {
-        console.error(e);
-      }
+      }catch(e){ console.error(e) }
       window.close();
+    }
+
+    function loadList(){
+      const container = document.getElementById('list');
+      container.innerHTML = '';
+      const today = new Date();
+      const start = new Date(2025, 7, 27); // 2025-08-27 (month is 0-based)
+      for(let d = new Date(today); d >= start; d.setDate(d.getDate() - 1)){
+        const dateStr = fmt(d);
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<div><div class="date">${dateStr}</div><div class="choose">${dateStr}.json</div></div><div>Choose</div>`;
+        div.onclick = () => choose(dateStr + '.json');
+        container.appendChild(div);
+      }
     }
 
     loadList();
