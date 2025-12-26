@@ -4,6 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="manifest" href="manifest.json">
   <title>Crossword Puzzle</title>
   <style>
     body,
@@ -18,6 +19,12 @@
     }
   </style>
   <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js');
+      });
+    }
+
     // Function to generate UUID v4
     function generateUUID() {
       return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
@@ -131,11 +138,16 @@
     }
 
     function openPuzzleChooser() {
-      // Open a small chooser window that lists available puzzles
-      const w = 420, h = Math.min(window.innerHeight - 60, 700);
-      const left = Math.max(0, Math.round((window.screen.width - w) / 2));
-      const top = Math.max(0, Math.round((window.screen.height - h) / 3));
-      window.open('puzzle-chooser.html', 'puzzleChooser', `width=${w},height=${h},left=${left},top=${top}`);
+      window.location.href = 'puzzle-chooser.html';
+    }
+
+    function getInitialPuzzle() {
+      const params = new URLSearchParams(window.location.search);
+      const selected = params.get('selected');
+      if (selected) {
+        return "puzzles/" + selected;
+      }
+      return "mini.json";
     }
 
     // Function to load the decrypted website
@@ -255,7 +267,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('uuid').textContent = userUUID;
       // Start loading the decrypted website
-      loadDecryptedWebsite("mini.json");
+      loadDecryptedWebsite(getInitialPuzzle());
     });
   </script>
 </body>

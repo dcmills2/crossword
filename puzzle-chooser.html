@@ -17,25 +17,17 @@
   </style>
 </head>
 <body>
-  <button class="close" onclick="window.close()">Close</button>
+  <button class="close" onclick="history.back()">Close</button>
   <h1>Select a puzzle</h1>
   <div id="list" class="list">Loading…</div>
   <div id="empty" class="empty" style="display:none">No puzzles found.</div>
 
   <script>
-    // Generate descending date list from today back to 2025-08-27 (inclusive).
     function pad(n){return n<10? '0'+n : n}
     function fmt(d){return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())}
 
-    function choose(filename){
-      try{
-        if (window.opener && window.opener.loadDecryptedWebsite){
-          window.opener.loadDecryptedWebsite("puzzles/" + filename);
-        } else {
-          console.warn('No opener to receive chosen filename');
-        }
-      }catch(e){ console.error(e) }
-      window.close();
+    function choose(filename) {
+      window.location.href = `index.html?selected=${encodeURIComponent(filename)}`;
     }
 
     function loadList(){
@@ -47,7 +39,12 @@
         const dateStr = fmt(d);
         const div = document.createElement('div');
         div.className = 'item';
-        div.innerHTML = `<div><div class="date">${dateStr}</div><div class="choose">${dateStr}.json</div></div><div>Choose</div>`;
+        div.innerHTML = `
+          <div>
+            <div class="date">${dateStr}</div>
+            <div class="choose">${dateStr}.json</div>
+          </div>
+          <div>Choose</div>`;
         div.onclick = () => choose(dateStr + '.json');
         container.appendChild(div);
       }
